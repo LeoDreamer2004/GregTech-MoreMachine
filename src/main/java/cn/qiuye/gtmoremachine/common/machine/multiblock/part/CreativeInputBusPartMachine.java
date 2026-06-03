@@ -24,7 +24,6 @@ import com.lowdragmc.lowdraglib.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib.gui.widget.PhantomSlotWidget;
 import com.lowdragmc.lowdraglib.gui.widget.Widget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
-import com.lowdragmc.lowdraglib.misc.ItemStackTransfer;
 import com.lowdragmc.lowdraglib.syncdata.ISubscription;
 import com.lowdragmc.lowdraglib.utils.Position;
 
@@ -41,7 +40,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -63,20 +61,16 @@ public class CreativeInputBusPartMachine extends TieredIOPartMachine implements 
     @SaveField
     protected final NotifiableItemStackHandler circuitInventory;
     @SaveField
-    private final ItemStackTransfer creativeStorage;
+    private final UnlimitedItemStackTransfer creativeStorage;
     protected ArrayList<Item> lstItem;
 
-    public CreativeInputBusPartMachine(BlockEntityCreationInfo holder, Function<Integer, ItemStackTransfer> transferFactory) {
+    public CreativeInputBusPartMachine(BlockEntityCreationInfo holder) {
         super(holder, GTValues.MAX, IO.IN);
         this.inventory = this.attachTrait(new InfinityItemStackHandler(getInventorySize(), io, io, UnlimitedItemStackTransfer::new).shouldDropInventoryInWorld(false));
         this.circuitInventory = this.attachTrait(new NotifiableItemStackHandler(1, IO.IN, IO.NONE)
                 .setFilter(IntCircuitBehaviour::isIntegratedCircuit).shouldDropInventoryInWorld(!ConfigHolder.INSTANCE.machines.ghostCircuit).shouldSearchContent(false));
-        this.creativeStorage = transferFactory.apply(this.getInventorySize());
+        this.creativeStorage = new UnlimitedItemStackTransfer(this.getInventorySize());
         this.lstItem = new ArrayList<>();
-    }
-
-    public CreativeInputBusPartMachine(BlockEntityCreationInfo holder) {
-        this(holder, ItemStackTransfer::new);
     }
 
     protected int getInventorySize() {

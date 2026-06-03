@@ -2,6 +2,7 @@ package cn.qiuye.gtmoremachine.api.misc;
 
 import com.gregtechceu.gtceu.api.transfer.item.CustomItemStackHandler;
 
+import com.lowdragmc.lowdraglib.side.item.IItemTransfer;
 import com.lowdragmc.lowdraglib.side.item.ItemTransferHelper;
 
 import net.minecraft.core.NonNullList;
@@ -17,7 +18,7 @@ import java.util.function.Function;
 
 import javax.annotation.Nonnull;
 
-public class UnlimitedItemStackTransfer extends CustomItemStackHandler {
+public class UnlimitedItemStackTransfer extends CustomItemStackHandler implements IItemTransfer {
 
     public UnlimitedItemStackTransfer(int size) {
         super(size);
@@ -40,24 +41,75 @@ public class UnlimitedItemStackTransfer extends CustomItemStackHandler {
     }
 
     @Override
-    @NotNull
-    public ItemStack extractItem(int slot, int amount, boolean simulate) {
-        if (amount == 0)
-            return ItemStack.EMPTY;
+    public void setStackInSlot(int slot, @Nonnull ItemStack stack) {
+        validateSlotIndex(slot);
+        this.stacks.set(slot, stack);
+        onContentsChanged(slot);
+    }
+
+    @Override
+    @Nonnull
+    public ItemStack insertItem(int slot, @Nonnull ItemStack stack, boolean simulate, boolean notifyChanges) {
+        if (stack.isEmpty()) return ItemStack.EMPTY;
+        if (!isItemValid(slot, stack)) return stack;
 
         validateSlotIndex(slot);
 
         ItemStack existing = this.stacks.get(slot);
+        int limit = getStackLimit(slot, stack);
 
-        if (existing.isEmpty())
-            return ItemStack.EMPTY;
+        if (!existing.isEmpty()) {
+            if (!ItemTransferHelper.canItemStacksStack(stack, existing)) {
+                return stack;
+            }
+            limit -= existing.getCount();
+        }
+
+        if (limit <= 0) {
+            return stack;
+        }
+
+        boolean reachedLimit = stack.getCount() > limit;
+
+        if (!simulate) {
+            if (existing.isEmpty()) {
+                this.stacks.set(slot, reachedLimit ? ItemTransferHelper.copyStackWithSize(stack, limit) : stack.copy());
+            } else {
+                existing.grow(reachedLimit ? limit : stack.getCount());
+            }
+
+            if (notifyChanges) {
+                onContentsChanged(slot);
+            }
+        }
+
+        return reachedLimit ? ItemTransferHelper.copyStackWithSize(stack, stack.getCount() - limit) : ItemStack.EMPTY;
+    }
+
+    @Override
+    @NotNull
+    public ItemStack insertItem(int slot, @NotNull ItemStack stack, boolean simulate) {
+        return insertItem(slot, stack, simulate, !simulate);
+    }
+
+    @Override
+    @NotNull
+    public ItemStack extractItem(int slot, int amount, boolean simulate, boolean notifyChanges) {
+        if (amount == 0) return ItemStack.EMPTY;
+
+        validateSlotIndex(slot);
+
+        ItemStack existing = this.stacks.get(slot);
+        if (existing.isEmpty()) return ItemStack.EMPTY;
 
         int toExtract = Math.min(amount, getSlotLimit(slot));
 
         if (existing.getCount() <= toExtract) {
             if (!simulate) {
                 this.stacks.set(slot, ItemStack.EMPTY);
-                onContentsChanged(slot);
+                if (notifyChanges) {
+                    onContentsChanged(slot);
+                }
                 return existing;
             } else {
                 return existing.copy();
@@ -65,11 +117,18 @@ public class UnlimitedItemStackTransfer extends CustomItemStackHandler {
         } else {
             if (!simulate) {
                 this.stacks.set(slot, ItemTransferHelper.copyStackWithSize(existing, existing.getCount() - toExtract));
-                onContentsChanged(slot);
+                if (notifyChanges) {
+                    onContentsChanged(slot);
+                }
             }
-
             return ItemTransferHelper.copyStackWithSize(existing, toExtract);
         }
+    }
+
+    @Override
+    @NotNull
+    public ItemStack extractItem(int slot, int amount, boolean simulate) {
+        return extractItem(slot, amount, simulate, !simulate);
     }
 
     @Override
@@ -117,5 +176,24 @@ public class UnlimitedItemStackTransfer extends CustomItemStackHandler {
             }
         }
         onLoad();
+    }
+
+    @Override
+    @NotNull
+    public Object createSnapshot() {
+        ItemStack[] copied = new ItemStack[stacks.size()];
+        for (int i = 0; i < stacks.size(); i++) {
+            copied[i] = stacks.get(i).copy();
+        }
+        return copied;
+    }
+
+    @Override
+    public void restoreFromSnapshot(Object snapshot) {
+        if (snapshot instanceof ItemStack[] copied && copied.length == stacks.size()) {
+            for (int i = 0; i < stacks.size(); i++) {
+                stacks.set(i, copied[i].copy());
+            }
+        }
     }
 }
